@@ -20,12 +20,14 @@ struct object_s{
 
 int main(int argc, char** argv) {
     std::string root_dir = argv[1];
-    std::string sequence_num = argv[2];
+    std::string cal_dir = argv[2];
+    std::string sequence_num = argv[3];
     std::cout << root_dir << std::endl;
     std::cout << sequence_num << std::endl;
     std::string label_file = root_dir + "/label_02/" + sequence_num + ".txt";
     std::string gt_file = root_dir + "/pose_lio/" + sequence_num + ".txt";
-    std::string cal_file = "/media/yihang/LYH/kitti_tracking/data_tracking_calib/training/calib/" + sequence_num + ".txt";
+    // std::string cal_file = "/media/yihang/LYH/kitti_tracking/data_tracking_calib/training/calib/" + sequence_num + ".txt";
+    std::string cal_file = cal_dir + sequence_num + ".txt";
     std::ifstream posefile(gt_file, std::ios::in);
     std::ifstream labelfile(label_file, std::ios::in);
     std::ifstream calfile(cal_file, std::ios::in);
