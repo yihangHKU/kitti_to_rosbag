@@ -38,13 +38,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace kitti {
 
 const std::string KittiParser::kVelToCamCalibrationFilename =
-    "calib_velo_to_cam.txt";
+    // "calib_velo_to_cam.txt";
+    ".txt";
 const std::string KittiParser::kCamToCamCalibrationFilename =
-    "calib_cam_to_cam.txt";
+    // "calib_cam_to_cam.txt";
+    ".txt";
 const std::string KittiParser::kImuToVelCalibrationFilename =
     "calib_imu_to_velo.txt";
 
-const std::string KittiParser::kVelodyneFolder = "velodyne_points";
+const std::string KittiParser::kVelodyneFolder = "velodyne";
 const std::string KittiParser::kCameraFolder = "image_";
 const std::string KittiParser::kPoseFolder = "oxts";
 
@@ -52,21 +54,22 @@ const std::string KittiParser::kTimestampFilename = "timestamps.txt";
 const std::string KittiParser::kDataFolder = "data";
 
 KittiParser::KittiParser(const std::string& calibration_path,
-                         const std::string& dataset_path, bool rectified)
+                         const std::string& dataset_path, const std::string& sequence_num, bool rectified)
     : calibration_path_(calibration_path),
       dataset_path_(dataset_path),
+      sequence_num_(sequence_num),
       rectified_(rectified),
       initial_pose_set_(false) {}
 
 bool KittiParser::loadCalibration() {
   loadVelToCamCalibration();
-  loadImuToVelCalibration();
+  // loadImuToVelCalibration();
   loadCamToCamCalibration();
   return true;
 }
 
 bool KittiParser::loadVelToCamCalibration() {
-  std::string filename = calibration_path_ + "/" + kVelToCamCalibrationFilename;
+  std::string filename = calibration_path_ + "/" + sequence_num_ + kVelToCamCalibrationFilename;
   std::ifstream import_file(filename, std::ios::in);
   if (!import_file) {
     return false;
@@ -85,21 +88,31 @@ bool KittiParser::loadVelToCamCalibration() {
 
     std::vector<double> parsed_doubles;
     // Compare all header possibilities...
-    if (header.compare("R") == 0) {
-      // Parse the rotation matrix.
+    // if (header.compare("R") == 0) {
+    //   // Parse the rotation matrix.
+    //   if (parseVectorOfDoubles(data, &parsed_doubles)) {
+    //     Eigen::Matrix3d R(parsed_doubles.data());
+    //     // All matrices are written row-major but Eigen is column-major
+    //     // (can swap this, but I guess it's anyway easier to just transpose
+    //     // for these small matrices).
+    //     T_cam0_vel_.getRotation() =
+    //         Rotation::fromApproximateRotationMatrix(R.transpose());
+    //   }
+    // } else if (header.compare("T") == 0) {
+    //   // Parse the translation matrix.
+    //   if (parseVectorOfDoubles(data, &parsed_doubles)) {
+    //     Eigen::Vector3d T(parsed_doubles.data());
+    //     T_cam0_vel_.getPosition() = T;
+    //   }
+    // }
+    if (header.compare(0, 11, "Tr_velo_cam") == 0) {
       if (parseVectorOfDoubles(data, &parsed_doubles)) {
-        Eigen::Matrix3d R(parsed_doubles.data());
-        // All matrices are written row-major but Eigen is column-major
-        // (can swap this, but I guess it's anyway easier to just transpose
-        // for these small matrices).
-        T_cam0_vel_.getRotation() =
-            Rotation::fromApproximateRotationMatrix(R.transpose());
-      }
-    } else if (header.compare("T") == 0) {
-      // Parse the translation matrix.
-      if (parseVectorOfDoubles(data, &parsed_doubles)) {
-        Eigen::Vector3d T(parsed_doubles.data());
-        T_cam0_vel_.getPosition() = T;
+        Eigen::Matrix<double, 3, 4> projection_mat = Eigen::Matrix<double, 4, 3>(parsed_doubles.data()).transpose();
+        // Eigen::Matrix<double, 4, 3> T(parsed_doubles.data());
+        Eigen::Matrix3d R = projection_mat.block<3,3>(0,0);
+        Eigen::Vector3d t = projection_mat.block<3,1>(0,3);
+        T_cam0_vel_.getRotation() = Rotation::fromApproximateRotationMatrix(R);
+        T_cam0_vel_.getPosition() = t;
       }
     }
   }
@@ -151,7 +164,7 @@ bool KittiParser::loadImuToVelCalibration() {
 }
 
 bool KittiParser::loadCamToCamCalibration() {
-  std::string filename = calibration_path_ + "/" + kCamToCamCalibrationFilename;
+  std::string filename = calibration_path_ + "/" + sequence_num_ + kCamToCamCalibrationFilename;
   std::ifstream import_file(filename, std::ios::in);
   if (!import_file) {
     return false;
@@ -204,11 +217,12 @@ bool KittiParser::loadCamToCamCalibration() {
 
     // Load rectification matrix.
     if (header.compare(0, 6, "R_rect") == 0) {
-      std::cout << "R_rect header: " << header
-                << " substring: " << header.substr(7) << std::endl;
+      std::cout << "R_rect header: " << header << std::endl;
+                // << " substring: " << header.substr(7) << std::endl;
       if (rectified_) {
         // Figure out which number this is.
-        int index = std::stoi(header.substr(7));
+        // int index = std::stoi(header.substr(7));
+        int index = 0;
         if (camera_calibrations_.size() <= index) {
           camera_calibrations_.resize(index + 1);
         }
@@ -221,12 +235,13 @@ bool KittiParser::loadCamToCamCalibration() {
     }
 
     // Projection mat.
-    if (header.compare(0, 6, "P_rect") == 0) {
-      std::cout << "P_rect header: " << header
-                << " substring: " << header.substr(7) << std::endl;
+    if (header.compare(0, 2, "P2") == 0) {
+      std::cout << "P_rect header: " << header << std::endl;
+                // << " substring: " << header.substr(7) << std::endl;
       if (rectified_) {
         // Figure out which number this is.
-        int index = std::stoi(header.substr(7));
+        // int index = std::stoi(header.substr(7));
+        int index = 0;
         if (camera_calibrations_.size() <= index) {
           camera_calibrations_.resize(index + 1);
         }
@@ -283,33 +298,33 @@ bool KittiParser::loadCamToCamCalibration() {
       }
     }
 
-    if (header.compare(0, 1, "R") == 0) {
-      int index = std::stoi(header.substr(2));
-      if (camera_calibrations_.size() <= index) {
-        camera_calibrations_.resize(index + 1);
-      }
-      // Parse the rotation matrix.
-      if (parseVectorOfDoubles(data, &parsed_doubles)) {
-        Eigen::Matrix3d R(parsed_doubles.data());
-        // All matrices are written row-major but Eigen is column-major
-        // (can swap this, but I guess it's anyway easier to just transpose
-        // for these small matrices).
-        camera_calibrations_[index].T_cam0_cam.getRotation() =
-            Rotation::fromApproximateRotationMatrix(R.transpose());
-      }
-      continue;
-    } else if (header.compare(0, 1, "T") == 0) {
-      int index = std::stoi(header.substr(2));
-      if (camera_calibrations_.size() <= index) {
-        camera_calibrations_.resize(index + 1);
-      }
-      // Parse the translation matrix.
-      if (parseVectorOfDoubles(data, &parsed_doubles)) {
-        Eigen::Vector3d T(parsed_doubles.data());
-        camera_calibrations_[index].T_cam0_cam.getPosition() = T;
-      }
-      continue;
-    }
+    // if (header.compare(0, 1, "R") == 0) {
+    //   int index = std::stoi(header.substr(2));
+    //   if (camera_calibrations_.size() <= index) {
+    //     camera_calibrations_.resize(index + 1);
+    //   }
+    //   // Parse the rotation matrix.
+    //   if (parseVectorOfDoubles(data, &parsed_doubles)) {
+    //     Eigen::Matrix3d R(parsed_doubles.data());
+    //     // All matrices are written row-major but Eigen is column-major
+    //     // (can swap this, but I guess it's anyway easier to just transpose
+    //     // for these small matrices).
+    //     camera_calibrations_[index].T_cam0_cam.getRotation() =
+    //         Rotation::fromApproximateRotationMatrix(R.transpose());
+    //   }
+    //   continue;
+    // } else if (header.compare(0, 1, "T") == 0) {
+    //   int index = std::stoi(header.substr(2));
+    //   if (camera_calibrations_.size() <= index) {
+    //     camera_calibrations_.resize(index + 1);
+    //   }
+    //   // Parse the translation matrix.
+    //   if (parseVectorOfDoubles(data, &parsed_doubles)) {
+    //     Eigen::Vector3d T(parsed_doubles.data());
+    //     camera_calibrations_[index].T_cam0_cam.getPosition() = T;
+    //   }
+    //   continue;
+    // }
   }
   return true;
 }
@@ -400,6 +415,51 @@ bool KittiParser::loadTimestampsIntoVector(
   return true;
 }
 
+bool KittiParser::getGTboudingbox(std::vector<int> &frames, std::vector<int> &id, std::vector<Eigen::Vector3d> &min_points, std::vector<Eigen::Vector3d> &max_points, std::vector<Eigen::Matrix3d> &Rs) {
+  std::string filename = dataset_path_ + "/" + "label_02" + "/" + sequence_num_ + ".txt";
+  std::ifstream import_file(filename, std::ios::in);
+  if (!import_file) {
+    std::cout << "cannot open label file" << std::endl;
+    return false;
+  }
+  std::string line;
+  while (std::getline(import_file, line)) {
+    std::stringstream line_stream(line);
+    std::string frame;
+    std::getline(line_stream, frame, ' ');
+    std::string track_id;
+    std::getline(line_stream, track_id, ' ');
+    std::string type;
+    std::getline(line_stream, type, ' ');
+    std::string data;
+    std::getline(line_stream, data, ':');
+    int frame_i = std::stoi(frame);
+    int index = std::stoi(track_id);
+    if(index > -1)
+    {
+      frames.push_back(frame_i);
+      id.push_back(index);
+      std::vector<double> parsed_doubles;
+      if (parseVectorOfDoubles(data, &parsed_doubles)){
+        Eigen::Matrix<double, 14, 1> V(parsed_doubles.data());
+        Eigen::Vector3d dimension(V[7], V[8], V[9]);
+        Eigen::Vector3d location(V[10], V[11], V[12]);
+        double rotation = V[13];
+        Eigen::Vector3d min_point(-0.5*dimension[2], -dimension[0], -0.5*dimension[1]);
+        Eigen::Vector3d max_point(0.5*dimension[2], 0.0, 0.5*dimension[1]);
+        Eigen::Matrix3d R;
+        R.col(0) << cos(rotation), 0.0, -sin(rotation);
+        R.col(1) << 0.0, 1.0, 0.0;
+        R.col(2) << sin(rotation), 0.0, cos(rotation);
+        min_points.push_back(R * min_point + location);
+        max_points.push_back(R * max_point + location);
+        Rs.push_back(R);
+      }
+    }
+  }
+  return true;
+}
+
 bool KittiParser::getCameraCalibration(uint64_t cam_id,
                                        CameraCalibration* cam) const {
   if (cam_id >= camera_calibrations_.size()) {
@@ -446,20 +506,20 @@ bool KittiParser::getPointcloudAtEntry(
     uint64_t entry, uint64_t* timestamp,
     pcl::PointCloud<pcl::PointXYZI>* ptcloud) {
   // Get the timestamp for this first.
-  if (timestamps_vel_ns_.size() <= entry) {
-    std::cout << "Warning: no timestamp for this entry!\n";
-    return false;
-  }
+  // if (timestamps_vel_ns_.size() <= entry) {
+  //   std::cout << "Warning: no timestamp for this entry!\n";
+  //   return false;
+  // }
 
-  *timestamp = timestamps_vel_ns_[entry];
+  // *timestamp = timestamps_vel_ns_[entry];
+  *timestamp = 1e8 * entry;
 
   // Load the actual pointcloud.
   const size_t kMaxNumberOfPoints = 1e6;  // From Readme for raw files.
   ptcloud->clear();
   ptcloud->reserve(kMaxNumberOfPoints);
-
   std::string filename = dataset_path_ + "/" + kVelodyneFolder + "/" +
-                         kDataFolder + "/" + getFilenameForEntry(entry) +
+                         sequence_num_ + "/" + getFilenameForEntry(entry) +
                          ".bin";
 
   std::ifstream input(filename, std::ios::in | std::ios::binary);
@@ -483,15 +543,16 @@ bool KittiParser::getPointcloudAtEntry(
 bool KittiParser::getImageAtEntry(uint64_t entry, uint64_t cam_id,
                                   uint64_t* timestamp, cv::Mat* image) {
   // Get the timestamp for this first.
-  if (timestamps_cam_ns_.size() <= cam_id ||
-      timestamps_cam_ns_[cam_id].size() <= entry) {
-    std::cout << "Warning: no timestamp for this entry!\n";
-    return false;
-  }
-  *timestamp = (timestamps_cam_ns_[cam_id])[entry];
+  // if (timestamps_cam_ns_.size() <= cam_id ||
+  //     timestamps_cam_ns_[cam_id].size() <= entry) {
+  //   std::cout << "Warning: no timestamp for this entry!\n";
+  //   return false;
+  // }
+  // *timestamp = (timestamps_cam_ns_[cam_id])[entry];
+  *timestamp = 1e8 * entry;
 
-  std::string filename = dataset_path_ + "/" + getFolderNameForCamera(cam_id) +
-                         "/" + kDataFolder + "/" + getFilenameForEntry(entry) +
+  std::string filename = dataset_path_ + "/" + getFolderNameForCamera(cam_id+2) +
+                         "/" + sequence_num_ + "/" + getFilenameForEntry(entry) +
                          ".png";
 
   *image = cv::imread(filename, CV_LOAD_IMAGE_UNCHANGED);
@@ -571,7 +632,7 @@ std::string KittiParser::getFolderNameForCamera(int cam_number) const {
 
 std::string KittiParser::getFilenameForEntry(uint64_t entry) const {
   char buffer[20];
-  sprintf(buffer, "%010llu", entry);
+  sprintf(buffer, "%006llu", entry);
   return std::string(buffer);
 }
 

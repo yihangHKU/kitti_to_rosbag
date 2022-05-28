@@ -36,6 +36,11 @@ cs_add_executable(tiny_disp_view
 )
 target_link_libraries(tiny_disp_view ${PROJECT_NAME} ${OpenCV_LIBRARIES})
 
+cs_add_executable(kitti_static_filter
+  src/kitti_static_label_filter.cpp
+)
+target_link_libraries(kitti_static_filter ${PROJECT_NAME} ${OpenCV_LIBRARIES})
+
 ##########
 # EXPORT #
 ##########

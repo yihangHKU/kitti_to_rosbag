@@ -34,6 +34,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <tf/transform_datatypes.h>
+#include <visualization_msgs/Marker.h>
 
 #include "kitti_to_rosbag/kitti_common.h"
 
@@ -53,6 +54,10 @@ void transformToTf(const Transformation& transform,
 void transformToRos(const Transformation& transform,
                     geometry_msgs::TransformStamped* transform_msg);
 void timestampToRos(uint64_t timestamp_ns, ros::Time* time);
+
+void draw_bbox(visualization_msgs::Marker &cluster, Eigen::Vector3d max_point, Eigen::Vector3d min_point, Eigen::Matrix3d R);
+
+
 
 std::string getCameraFrameId(int cam_id);
 

@@ -45,8 +45,10 @@ void calibrationToRos(uint64_t cam_id, const CameraCalibration& cam,
                       sensor_msgs::CameraInfo* cam_msg) {
   cam_msg->header.frame_id = getCameraFrameId(cam_id);
 
-  cam_msg->width = cam.image_size.x();
-  cam_msg->height = cam.image_size.y();
+  // cam_msg->width = cam.image_size.x();
+  // cam_msg->height = cam.image_size.y();
+  cam_msg->width = 1242;
+  cam_msg->height = 375;
 
   cam_msg->distortion_model = "plumb_bob";
 
@@ -130,6 +132,101 @@ void transformToRos(const Transformation& transform,
 
 void timestampToRos(uint64_t timestamp_ns, ros::Time* time) {
   time->fromNSec(timestamp_ns);
+}
+
+void draw_bbox(visualization_msgs::Marker &cluster, Eigen::Vector3d max_point, Eigen::Vector3d min_point, Eigen::Matrix3d R)
+{   
+        Eigen::Matrix<double, 8, 3> corners;
+        corners.row(0) << min_point[0], min_point[1], min_point[2];
+        corners.row(1) << max_point[0], min_point[1], min_point[2];
+        corners.row(2) << min_point[0], max_point[1], min_point[2];
+        corners.row(3) << max_point[0], max_point[1], min_point[2];
+        corners.row(4) << min_point[0], min_point[1], max_point[2];
+        corners.row(5) << max_point[0], min_point[1], max_point[2];
+        corners.row(6) << min_point[0], max_point[1], max_point[2];
+        corners.row(7) << max_point[0], max_point[1], max_point[2];
+        corners = corners * R.transpose();
+
+        geometry_msgs::Point p;
+        p.x = corners(0,0);
+        p.y = corners(0,1);
+        p.z = corners(0,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(4,0);
+        p.y = corners(4,1);
+        p.z = corners(4,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(5,0);
+        p.y = corners(5,1);
+        p.z = corners(5,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(1,0);
+        p.y = corners(1,1);
+        p.z = corners(1,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(3,0);
+        p.y = corners(3,1);
+        p.z = corners(3,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(7,0);
+        p.y = corners(7,1);
+        p.z = corners(7,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(5,0);
+        p.y = corners(5,1);
+        p.z = corners(5,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(7,0);
+        p.y = corners(7,1);
+        p.z = corners(7,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(6,0);
+        p.y = corners(6,1);
+        p.z = corners(6,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(4,0);
+        p.y = corners(4,1);
+        p.z = corners(4,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(6,0);
+        p.y = corners(6,1);
+        p.z = corners(6,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(2,0);
+        p.y = corners(2,1);
+        p.z = corners(2,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(3,0);
+        p.y = corners(3,1);
+        p.z = corners(3,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(2,0);
+        p.y = corners(2,1);
+        p.z = corners(2,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(0,0);
+        p.y = corners(0,1);
+        p.z = corners(0,2);
+        cluster.points.push_back(p);
+
+        p.x = corners(1,0);
+        p.y = corners(1,1);
+        p.z = corners(1,2);
+        cluster.points.push_back(p);
 }
 
 }  // namespace kitti

@@ -31,6 +31,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <pcl_ros/point_cloud.h>
 #include <rosbag/bag.h>
 #include <tf/tfMessage.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/Marker.h>
+#include <unordered_set>
 
 #include "kitti_to_rosbag/kitti_parser.h"
 #include "kitti_to_rosbag/kitti_ros_conversions.h"
@@ -41,7 +44,8 @@ class KittiBagConverter {
  public:
   KittiBagConverter(const std::string& calibration_path,
                     const std::string& dataset_path,
-                    const std::string& output_filename);
+                    const std::string& output_filename,
+                    const std::string& sequence_num);
 
   void convertAll();
   bool convertEntry(uint64_t entry);
@@ -64,25 +68,177 @@ class KittiBagConverter {
 
 KittiBagConverter::KittiBagConverter(const std::string& calibration_path,
                                      const std::string& dataset_path,
-                                     const std::string& output_filename)
-    : parser_(calibration_path, dataset_path, true),
+                                     const std::string& output_filename,
+                                     const std::string& sequence_num)
+    : parser_(calibration_path, dataset_path, sequence_num, true),
       world_frame_id_("world"),
       imu_frame_id_("imu"),
       cam_frame_id_prefix_("cam"),
-      velodyne_frame_id_("velodyne"),
+      velodyne_frame_id_("camera_init"),
       pose_topic_("pose_imu"),
       transform_topic_("transform_imu"),
       pointcloud_topic_("velodyne_points") {
   // Load all the timestamp maps and calibration parameters.
   parser_.loadCalibration();
-  parser_.loadTimestampMaps();
+  // parser_.loadTimestampMaps();
 
   bag_.open(output_filename, rosbag::bagmode::Write);
 }
 
 void KittiBagConverter::convertAll() {
+  std::vector<int> frame, id;
+  std::vector<Eigen::Vector3d> min_points, max_points;
+  std::vector<Eigen::Matrix3d> Rs;
+  if(parser_.getGTboudingbox(frame, id, min_points, max_points, Rs))
+  { 
+    visualization_msgs::MarkerArray clusters;
+    uint64_t timestamp_ns;
+    ros::Time timestamp_ros;
+    Transformation T_cam0_vel = parser_.T_cam0_vel().inverse();
+    kindr::minimal::RotationQuaternionTemplate<double> Rot_cam_vel = T_cam0_vel.getRotation();
+    Eigen::Quaterniond quat_cam_vel = Rot_cam_vel.toImplementation();
+    Eigen::Matrix3d R_cam_vel(quat_cam_vel);
+    Eigen::Vector3d t_cam_vel = T_cam0_vel.getPosition();
+    std::cout << "t_cam_vel: " << t_cam_vel << std::endl;
+    std::cout << "R_cam_vel: " << R_cam_vel << std::endl;
+    int last_frame = 0;
+    int max_id = 0;
+    std::unordered_set<int> idset;
+    std::cout << "frame_size: " << frame.size() << std::endl;
+    for(int i = 0; i < frame.size(); i++)
+    { 
+      if(frame[i] != last_frame)
+      { 
+        timestamp_ns = ros::TIME_MIN.toNSec() + 1e8 * last_frame;
+        timestampToRos(timestamp_ns, &timestamp_ros);
+        for(int j = 0; j <= max_id; j++)
+        {
+          if(!idset.count(j))
+          {
+            visualization_msgs::Marker cluster;
+            cluster.header.frame_id = velodyne_frame_id_;
+            // cluster.header.frame_id = "aft_mapped";
+            cluster.header.stamp = timestamp_ros;
+            cluster.ns = "cluster_gt";
+            cluster.id = j;
+            cluster.type = visualization_msgs::Marker::LINE_STRIP;
+            cluster.action = visualization_msgs::Marker::ADD;
+            cluster.scale.x = 0.1;
+            cluster.scale.y = 0.1;
+            cluster.scale.z = 0.1;
+            // cluster.color.r = reds[j%9];
+            // cluster.color.g = greens[j%9];
+            // cluster.color.b = blues[j%9];
+            cluster.color.r = 1;
+            cluster.color.g = 1;
+            // std::cout<<"r: "<<reds[j%9]<<"  "<<"g: "<<greens[j%9]<<"  "<<"b: "<<blues[j%9]<<std::endl;
+            cluster.color.a = 0;
+            cluster.lifetime = ros::Duration();
+            clusters.markers.push_back(cluster);
+          }
+        }
+        bag_.write("/cluster_vis_gt", timestamp_ros,
+                 clusters);
+        clusters.markers.clear();
+        idset.clear();
+        last_frame = frame[i];
+      }
+      visualization_msgs::Marker cluster;
+      cluster.header.frame_id = velodyne_frame_id_;
+      // cluster.header.frame_id = "camera_init";
+      timestamp_ns = ros::TIME_MIN.toNSec() + 1e8 * frame[i];
+      timestampToRos(timestamp_ns, &timestamp_ros);
+      cluster.header.stamp = timestamp_ros;
+      cluster.ns = "cluster_gt";
+      cluster.id = id[i];
+      if(id[i] > max_id) max_id = id[i];
+      idset.insert(id[i]);
+      cluster.type = visualization_msgs::Marker::LINE_STRIP;
+      cluster.action = visualization_msgs::Marker::ADD;
+      cluster.scale.x = 0.1;
+      cluster.scale.y = 0.1;
+      cluster.scale.z = 0.1;
+      // cluster.color.r = reds[j%9];
+      // cluster.color.g = greens[j%9];
+      // cluster.color.b = blues[j%9];
+      cluster.color.r = 1;
+      cluster.color.g = 1;
+      // std::cout<<"r: "<<reds[j%9]<<"  "<<"g: "<<greens[j%9]<<"  "<<"b: "<<blues[j%9]<<std::endl;
+      cluster.color.a = 1;
+      cluster.lifetime = ros::Duration();
+      Eigen::Matrix3d R = R_cam_vel * Rs[i];
+      Eigen::Vector3d min_point = R_cam_vel * min_points[i] + t_cam_vel;
+      Eigen::Vector3d max_point = R_cam_vel * max_points[i] + t_cam_vel;
+      draw_bbox(cluster, R.transpose() * min_point, R.transpose() * max_point, R);
+      clusters.markers.push_back(cluster);
+      if(i == frame.size()-1)
+      {
+        timestamp_ns = ros::TIME_MIN.toNSec() + 1e8 * frame[i];
+        timestampToRos(timestamp_ns, &timestamp_ros);
+        for(int j = 0; j <= max_id; j++)
+        {
+          if(!idset.count(j))
+          {
+            visualization_msgs::Marker cluster;
+            cluster.header.frame_id = velodyne_frame_id_;
+            // cluster.header.frame_id = "aft_mapped";
+            cluster.header.stamp = timestamp_ros;
+            cluster.ns = "cluster_gt";
+            cluster.id = j;
+            cluster.type = visualization_msgs::Marker::LINE_STRIP;
+            cluster.action = visualization_msgs::Marker::ADD;
+            cluster.scale.x = 0.1;
+            cluster.scale.y = 0.1;
+            cluster.scale.z = 0.1;
+            // cluster.color.r = reds[j%9];
+            // cluster.color.g = greens[j%9];
+            // cluster.color.b = blues[j%9];
+            cluster.color.r = 1;
+            cluster.color.g = 1;
+            // std::cout<<"r: "<<reds[j%9]<<"  "<<"g: "<<greens[j%9]<<"  "<<"b: "<<blues[j%9]<<std::endl;
+            cluster.color.a = 0;
+            cluster.lifetime = ros::Duration();
+            clusters.markers.push_back(cluster);
+          }
+        }
+        bag_.write("/cluster_vis_gt", timestamp_ros,
+                 clusters);
+        clusters.markers.clear();
+        idset.clear();
+        last_frame = frame[i];
+      }
+    }
+    timestamp_ns = ros::TIME_MIN.toNSec() + 1e8 * (frame[frame.size()-1] + 1);
+    timestampToRos(timestamp_ns, &timestamp_ros);
+    for(int j = 0; j <= max_id; j++)
+    {
+      visualization_msgs::Marker cluster;
+      cluster.header.frame_id = velodyne_frame_id_;
+      // cluster.header.frame_id = "aft_mapped";
+      cluster.header.stamp = timestamp_ros;
+      cluster.ns = "cluster_gt";
+      cluster.id = j;
+      cluster.type = visualization_msgs::Marker::LINE_STRIP;
+      cluster.action = visualization_msgs::Marker::ADD;
+      cluster.scale.x = 0.1;
+      cluster.scale.y = 0.1;
+      cluster.scale.z = 0.1;
+      // cluster.color.r = reds[j%9];
+      // cluster.color.g = greens[j%9];
+      // cluster.color.b = blues[j%9];
+      cluster.color.r = 1;
+      cluster.color.g = 1;
+      // std::cout<<"r: "<<reds[j%9]<<"  "<<"g: "<<greens[j%9]<<"  "<<"b: "<<blues[j%9]<<std::endl;
+      cluster.color.a = 0;
+      cluster.lifetime = ros::Duration();
+      clusters.markers.push_back(cluster);
+    }
+    bag_.write("/cluster_vis_gt", timestamp_ros,
+                 clusters);
+  }
   uint64_t entry = 0;
   while (convertEntry(entry)) {
+    std::cout << "entry: " << entry << std::endl;
     entry++;
   }
   std::cout << "Converted " << entry << " entries into a rosbag.\n";
@@ -93,32 +249,33 @@ bool KittiBagConverter::convertEntry(uint64_t entry) {
   uint64_t timestamp_ns;
 
   // Convert poses + TF transforms.
-  Transformation pose;
-  if (parser_.getPoseAtEntry(entry, &timestamp_ns, &pose)) {
-    geometry_msgs::PoseStamped pose_msg;
-    geometry_msgs::TransformStamped transform_msg;
+  // Transformation pose;
+  // if (parser_.getPoseAtEntry(entry, &timestamp_ns, &pose)) {
+  //   geometry_msgs::PoseStamped pose_msg;
+  //   geometry_msgs::TransformStamped transform_msg;
 
-    timestampToRos(timestamp_ns, &timestamp_ros);
-    pose_msg.header.frame_id = world_frame_id_;
-    pose_msg.header.stamp = timestamp_ros;
-    transform_msg.header.frame_id = world_frame_id_;
-    transform_msg.header.stamp = timestamp_ros;
+  //   timestampToRos(timestamp_ns, &timestamp_ros);
+  //   pose_msg.header.frame_id = world_frame_id_;
+  //   pose_msg.header.stamp = timestamp_ros;
+  //   transform_msg.header.frame_id = world_frame_id_;
+  //   transform_msg.header.stamp = timestamp_ros;
 
-    poseToRos(pose, &pose_msg);
-    transformToRos(pose, &transform_msg);
+  //   poseToRos(pose, &pose_msg);
+  //   transformToRos(pose, &transform_msg);
 
-    bag_.write(pose_topic_, timestamp_ros, pose_msg);
-    bag_.write(transform_topic_, timestamp_ros, transform_msg);
+  //   bag_.write(pose_topic_, timestamp_ros, pose_msg);
+  //   bag_.write(transform_topic_, timestamp_ros, transform_msg);
 
-    convertTf(timestamp_ns, pose);
-  } else {
-    return false;
-  }
+  //   convertTf(timestamp_ns, pose);
+  // } else {
+  //   return false;
+  // }
 
   // Convert images.
   cv::Mat image;
   for (size_t cam_id = 0; cam_id < parser_.getNumCameras(); ++cam_id) {
     if (parser_.getImageAtEntry(entry, cam_id, &timestamp_ns, &image)) {
+      timestamp_ns += ros::TIME_MIN.toNSec();
       timestampToRos(timestamp_ns, &timestamp_ros);
 
       sensor_msgs::Image image_msg;
@@ -144,13 +301,20 @@ bool KittiBagConverter::convertEntry(uint64_t entry) {
   // Convert pointclouds.
   pcl::PointCloud<pcl::PointXYZI> pointcloud;
   if (parser_.getPointcloudAtEntry(entry, &timestamp_ns, &pointcloud)) {
+    timestamp_ns += ros::TIME_MIN.toNSec();
     timestampToRos(timestamp_ns, &timestamp_ros);
 
     // This value is in MICROSECONDS, not nanoseconds.
     pointcloud.header.stamp = timestamp_ns / 1000;
     pointcloud.header.frame_id = velodyne_frame_id_;
+    Transformation pose;
+    convertTf(timestamp_ns, pose);
 
     bag_.write(pointcloud_topic_, timestamp_ros, pointcloud);
+  }
+  else
+  {
+    return false;
   }
 
   return true;
@@ -166,8 +330,9 @@ void KittiBagConverter::convertTf(uint64_t timestamp_ns,
   Transformation T_imu_world = imu_pose;
   Transformation T_vel_imu = parser_.T_vel_imu();
   Transformation T_cam_imu;
+  Transformation T_vel_cam0 = parser_.T_cam0_vel();
 
-  geometry_msgs::TransformStamped tf_imu_world, tf_vel_imu, tf_cam_imu;
+  geometry_msgs::TransformStamped tf_imu_world, tf_vel_imu, tf_cam_imu, tf_vel_cam0;
   transformToRos(T_imu_world, &tf_imu_world);
   tf_imu_world.header.frame_id = world_frame_id_;
   tf_imu_world.child_frame_id = imu_frame_id_;
@@ -176,20 +341,25 @@ void KittiBagConverter::convertTf(uint64_t timestamp_ns,
   tf_vel_imu.header.frame_id = imu_frame_id_;
   tf_vel_imu.child_frame_id = velodyne_frame_id_;
   tf_vel_imu.header.stamp = timestamp_ros;
+  transformToRos(T_vel_cam0, &tf_vel_cam0);
+  tf_vel_cam0.header.frame_id = "camera";
+  tf_vel_cam0.child_frame_id = velodyne_frame_id_;
+  tf_vel_cam0.header.stamp = timestamp_ros;
 
   // Put them into one tf_msg.
-  tf_msg.transforms.push_back(tf_imu_world);
-  tf_msg.transforms.push_back(tf_vel_imu);
+  // tf_msg.transforms.push_back(tf_imu_world);
+  // tf_msg.transforms.push_back(tf_vel_imu);
+  tf_msg.transforms.push_back(tf_vel_cam0);
 
   // Get all of the camera transformations as well.
-  for (size_t cam_id = 0; cam_id < parser_.getNumCameras(); ++cam_id) {
-    T_cam_imu = parser_.T_camN_imu(cam_id);
-    transformToRos(T_cam_imu.inverse(), &tf_cam_imu);
-    tf_cam_imu.header.frame_id = imu_frame_id_;
-    tf_cam_imu.child_frame_id = getCameraFrameId(cam_id);
-    tf_cam_imu.header.stamp = timestamp_ros;
-    tf_msg.transforms.push_back(tf_cam_imu);
-  }
+  // for (size_t cam_id = 0; cam_id < parser_.getNumCameras(); ++cam_id) {
+  //   T_cam_imu = parser_.T_camN_imu(cam_id);
+  //   transformToRos(T_cam_imu.inverse(), &tf_cam_imu);
+  //   tf_cam_imu.header.frame_id = imu_frame_id_;
+  //   tf_cam_imu.child_frame_id = getCameraFrameId(cam_id);
+  //   tf_cam_imu.header.stamp = timestamp_ros;
+  //   tf_msg.transforms.push_back(tf_cam_imu);
+  // }
 
   bag_.write("/tf", timestamp_ros, tf_msg);
 }
@@ -211,9 +381,11 @@ int main(int argc, char** argv) {
   const std::string calibration_path = argv[1];
   const std::string dataset_path = argv[2];
   const std::string output_path = argv[3];
-
+  const std::string sequence_num = argv[4];
+  std::cout << ros::TIME_MIN.toSec() << std::endl;
+  std::cout << ros::TIME_MIN.toNSec() << std::endl;
   kitti::KittiBagConverter converter(calibration_path, dataset_path,
-                                     output_path);
+                                     output_path, sequence_num);
   converter.convertAll();
 
   return 0;

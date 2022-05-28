@@ -43,7 +43,8 @@ class KittiLiveNode {
  public:
   KittiLiveNode(const ros::NodeHandle& nh, const ros::NodeHandle& nh_private,
                 const std::string& calibration_path,
-                const std::string& dataset_path);
+                const std::string& dataset_path,
+                const std::string& sequence_num);
 
   // Creates a timer to automatically publish entries in 'realtime' versus
   // the original data,
@@ -90,11 +91,12 @@ class KittiLiveNode {
 KittiLiveNode::KittiLiveNode(const ros::NodeHandle& nh,
                              const ros::NodeHandle& nh_private,
                              const std::string& calibration_path,
-                             const std::string& dataset_path)
+                             const std::string& dataset_path,
+                             const std::string& sequence_num)
     : nh_(nh),
       nh_private_(nh_private),
       image_transport_(nh_),
-      parser_(calibration_path, dataset_path, true),
+      parser_(calibration_path, dataset_path, sequence_num, true),
       world_frame_id_("world"),
       imu_frame_id_("imu"),
       cam_frame_id_prefix_("cam"),
@@ -294,8 +296,9 @@ int main(int argc, char** argv) {
 
   const std::string calibration_path = argv[1];
   const std::string dataset_path = argv[2];
+  const std::string sequence_num = argv[3];
 
-  kitti::KittiLiveNode node(nh, nh_private, calibration_path, dataset_path);
+  kitti::KittiLiveNode node(nh, nh_private, calibration_path, dataset_path, sequence_num);
 
   node.startPublishing(50.0);
 

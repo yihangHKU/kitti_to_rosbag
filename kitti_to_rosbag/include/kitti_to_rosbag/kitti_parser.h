@@ -54,7 +54,7 @@ class KittiParser {
   static const std::string kDataFolder;
 
   KittiParser(const std::string& calibration_path,
-              const std::string& dataset_path, bool rectified);
+              const std::string& dataset_path, const std::string& sequence_num, bool rectified);
 
   // MAIN API: all you should need to use!
   // Loading calibration files.
@@ -78,8 +78,12 @@ class KittiParser {
                             pcl::PointCloud<pcl::PointXYZI>* ptcloud);
   bool getImageAtEntry(uint64_t entry, uint64_t cam_id, uint64_t* timestamp,
                        cv::Mat* image);
+  bool getGTboudingbox(std::vector<int> &frames, std::vector<int> &id, std::vector<Eigen::Vector3d> &min_point, std::vector<Eigen::Vector3d> &max_point, std::vector<Eigen::Matrix3d> &R);
 
   bool getCameraCalibration(uint64_t cam_id, CameraCalibration* cam) const;
+
+  bool parseVectorOfDoubles(const std::string& input,
+                            std::vector<double>* output) const;
 
   Transformation T_camN_vel(int cam_number) const;
   Transformation T_camN_imu(int cam_number) const;
@@ -106,15 +110,13 @@ class KittiParser {
   bool loadTimestampsIntoVector(const std::string& filename,
                                 std::vector<uint64_t>* timestamp_vec) const;
 
-  bool parseVectorOfDoubles(const std::string& input,
-                            std::vector<double>* output) const;
-
   std::string getFolderNameForCamera(int cam_number) const;
   std::string getFilenameForEntry(uint64_t entry) const;
 
   // Base paths.
   std::string calibration_path_;
   std::string dataset_path_;
+  std::string sequence_num_;
   // Whether this dataset contains raw or rectified images. This determines
   // which calibration is read.
   bool rectified_;
