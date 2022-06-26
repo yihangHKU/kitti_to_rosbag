@@ -41,6 +41,17 @@ cs_add_executable(kitti_static_filter
 )
 target_link_libraries(kitti_static_filter ${PROJECT_NAME} ${OpenCV_LIBRARIES})
 
+cs_add_executable(write_dyn_labels
+  src/kitti_dyn_points_extract.cpp
+)
+target_link_libraries(write_dyn_labels ${PROJECT_NAME} ${OpenCV_LIBRARIES})
+
+cs_add_executable(pose_file_transfer
+  src/pose_file_transfer.cpp
+)
+target_link_libraries(pose_file_transfer ${PROJECT_NAME} ${OpenCV_LIBRARIES})
+
+
 ##########
 # EXPORT #
 ##########

@@ -45,11 +45,13 @@ class KittiBagConverter {
   KittiBagConverter(const std::string& calibration_path,
                     const std::string& dataset_path,
                     const std::string& output_filename,
-                    const std::string& sequence_num);
+                    const std::string& sequence_num,
+                    const std::string& label_out_file_in);
 
   void convertAll();
-  bool convertEntry(uint64_t entry);
+  bool convertEntry(uint64_t entry, pcl::PointCloud<pcl::PointXYZI> &pointcloud);
   void convertTf(uint64_t timestamp_ns, const Transformation& imu_pose);
+  void writelabels(bool debug, std::string filename, pcl::PointCloud<pcl::PointXYZI> pointcloud, std::vector<Eigen::Vector3d> min_points, std::vector<Eigen::Vector3d> max_points, std::vector<Eigen::Matrix3d> R, Eigen::Matrix3d R_cam_vel, Eigen::Vector3d t_cam_vel);
 
  private:
   kitti::KittiParser parser_;
@@ -64,13 +66,17 @@ class KittiBagConverter {
   std::string pose_topic_;
   std::string transform_topic_;
   std::string pointcloud_topic_;
+
+  std::string label_out_file;
 };
 
 KittiBagConverter::KittiBagConverter(const std::string& calibration_path,
                                      const std::string& dataset_path,
                                      const std::string& output_filename,
-                                     const std::string& sequence_num)
+                                     const std::string& sequence_num,
+                                     const std::string& label_out_file_in)
     : parser_(calibration_path, dataset_path, sequence_num, true),
+      label_out_file(label_out_file_in),
       world_frame_id_("world"),
       imu_frame_id_("imu"),
       cam_frame_id_prefix_("cam"),
@@ -89,6 +95,8 @@ void KittiBagConverter::convertAll() {
   std::vector<int> frame, id;
   std::vector<Eigen::Vector3d> min_points, max_points;
   std::vector<Eigen::Matrix3d> Rs;
+  std::vector<std::vector<Eigen::Vector3d>> min_points_byframe, max_points_byframe;
+  std::vector<std::vector<Eigen::Matrix3d>> R_byframe;
   if(parser_.getGTboudingbox(frame, id, min_points, max_points, Rs))
   { 
     visualization_msgs::MarkerArray clusters;
@@ -101,8 +109,13 @@ void KittiBagConverter::convertAll() {
     Eigen::Vector3d t_cam_vel = T_cam0_vel.getPosition();
     std::cout << "t_cam_vel: " << t_cam_vel << std::endl;
     std::cout << "R_cam_vel: " << R_cam_vel << std::endl;
+
+    min_points_byframe.resize(frame[frame.size() - 1] + 1);
+    max_points_byframe.resize(frame[frame.size() - 1] + 1);
+    R_byframe.resize(frame[frame.size() - 1] + 1);
+
     int last_frame = 0;
-    int max_id = 10;
+    int max_id = 0;
     std::unordered_set<int> idset;
     std::cout << "frame_size: " << frame.size() << std::endl;
     for(int i = 0; i < frame.size(); i++)
@@ -141,7 +154,40 @@ void KittiBagConverter::convertAll() {
                 clusters);
         clusters.markers.clear();
         idset.clear();
-        last_frame = frame[i];
+        // last_frame = frame[i];
+        last_frame ++;
+        while (last_frame != frame[i])
+        {
+          timestamp_ns = ros::TIME_MIN.toNSec() + 1e8 * last_frame;
+          timestampToRos(timestamp_ns, &timestamp_ros);
+          for(int j = 0; j <= max_id; j++)
+          {
+            visualization_msgs::Marker cluster;
+            cluster.header.frame_id = velodyne_frame_id_;
+            // cluster.header.frame_id = "aft_mapped";
+            cluster.header.stamp = timestamp_ros;
+            cluster.ns = "cluster_gt";
+            cluster.id = j;
+            cluster.type = visualization_msgs::Marker::LINE_STRIP;
+            cluster.action = visualization_msgs::Marker::ADD;
+            cluster.scale.x = 0.1;
+            cluster.scale.y = 0.1;
+            cluster.scale.z = 0.1;
+            // cluster.color.r = reds[j%9];
+            // cluster.color.g = greens[j%9];
+            // cluster.color.b = blues[j%9];
+            cluster.color.r = 1;
+            cluster.color.g = 1;
+            // std::cout<<"r: "<<reds[j%9]<<"  "<<"g: "<<greens[j%9]<<"  "<<"b: "<<blues[j%9]<<std::endl;
+            cluster.color.a = 0;
+            cluster.lifetime = ros::Duration();
+            clusters.markers.push_back(cluster);
+          }
+          bag_.write("/cluster_vis_gt", timestamp_ros,
+                  clusters);
+          clusters.markers.clear();
+          last_frame++;
+          }
       }
       visualization_msgs::Marker cluster;
       cluster.header.frame_id = velodyne_frame_id_;
@@ -170,6 +216,9 @@ void KittiBagConverter::convertAll() {
       Eigen::Vector3d min_point = R_cam_vel * min_points[i] + t_cam_vel;
       Eigen::Vector3d max_point = R_cam_vel * max_points[i] + t_cam_vel;
       draw_bbox(cluster, R.transpose() * min_point, R.transpose() * max_point, R);
+      min_points_byframe[last_frame].push_back(R.transpose() * min_point);
+      max_points_byframe[last_frame].push_back(R.transpose() * max_point);
+      R_byframe[last_frame].push_back(R);
       clusters.markers.push_back(cluster);
       if(i == frame.size()-1)
       {
@@ -237,14 +286,38 @@ void KittiBagConverter::convertAll() {
                  clusters);
   }
   uint64_t entry = 0;
-  while (convertEntry(entry)) {
+  pcl::PointCloud<pcl::PointXYZI> pointcloud;
+  Transformation T_cam0_vel = parser_.T_cam0_vel().inverse();
+  kindr::minimal::RotationQuaternionTemplate<double> Rot_cam_vel = T_cam0_vel.getRotation();
+  Eigen::Quaterniond quat_cam_vel = Rot_cam_vel.toImplementation();
+  Eigen::Matrix3d R_cam_vel(quat_cam_vel);
+  Eigen::Vector3d t_cam_vel = T_cam0_vel.getPosition();
+  while (convertEntry(entry, pointcloud)) {
     std::cout << "entry: " << entry << std::endl;
+    std::string out_file = label_out_file;
+    std::stringstream s;
+    s << std::setw(6) << std::setfill('0') << entry;
+    out_file += s.str(); 
+    out_file.append(".label");
+    if (entry <= min_points_byframe.size() - 1)
+    { 
+      bool debug = false;
+      if (30< entry && entry< 10) debug = true;
+      writelabels(debug, out_file, pointcloud, min_points_byframe[entry], max_points_byframe[entry], R_byframe[entry], R_cam_vel, t_cam_vel);
+    }
+    else
+    {
+      std::vector<Eigen::Vector3d> empty_vect;
+      std::vector<Eigen::Matrix3d> empty_matr;
+      writelabels(false, out_file, pointcloud, empty_vect, empty_vect, empty_matr, R_cam_vel, t_cam_vel);
+    }
+    
     entry++;
   }
   std::cout << "Converted " << entry << " entries into a rosbag.\n";
 }
 
-bool KittiBagConverter::convertEntry(uint64_t entry) {
+bool KittiBagConverter::convertEntry(uint64_t entry, pcl::PointCloud<pcl::PointXYZI> &pointcloud) {
   ros::Time timestamp_ros;
   uint64_t timestamp_ns;
 
@@ -299,7 +372,6 @@ bool KittiBagConverter::convertEntry(uint64_t entry) {
   }
 
   // Convert pointclouds.
-  pcl::PointCloud<pcl::PointXYZI> pointcloud;
   if (parser_.getPointcloudAtEntry(entry, &timestamp_ns, &pointcloud)) {
     timestamp_ns += ros::TIME_MIN.toNSec();
     timestampToRos(timestamp_ns, &timestamp_ros);
@@ -364,6 +436,65 @@ void KittiBagConverter::convertTf(uint64_t timestamp_ns,
   bag_.write("/tf", timestamp_ros, tf_msg);
 }
 
+void KittiBagConverter::writelabels(bool debug, std::string filename, pcl::PointCloud<pcl::PointXYZI> pointcloud, std::vector<Eigen::Vector3d> min_points, std::vector<Eigen::Vector3d> max_points, std::vector<Eigen::Matrix3d> R, Eigen::Matrix3d R_cam_vel, Eigen::Vector3d t_cam_vel)
+{   
+  std::ofstream out;
+  out.open(filename, std::ios::out  | std::ios::binary);
+  bool pub = false;
+  for (int p_index = 0; p_index < pointcloud.size(); p_index++)
+  { 
+    if(debug && p_index ==29590) pub = true;
+    else pub = false;
+    Eigen::Vector3d point(pointcloud[p_index].x, pointcloud[p_index].y, pointcloud[p_index].z);
+    if(pub) std::cout << "point: " << point.transpose() << std::endl;
+    Eigen::Vector3d point_cam = R_cam_vel.transpose() * (point - t_cam_vel);
+    double horizon = atan2f(float(point_cam(0)), float(point_cam(2)));
+    if (-40./180. * 3.14159 > horizon || 40./180. * 3.14159 < horizon)
+    {
+      int tmp = -1;
+      out.write((char*)&tmp, sizeof(int));
+      continue;
+    }
+    int bbox_size = min_points.size();
+    bool insidebox = false;
+    for (int bbox_index = 0; bbox_index < bbox_size; bbox_index++)
+    {
+      Eigen::Vector3d point_bbox = R[bbox_index].transpose() * point;
+      bool insidebox_this = false;
+      if(pub) std::cout << "min_point: " << min_points[bbox_index].transpose() << " max_point: " << max_points[bbox_index].transpose() << std::endl;
+      if(pub) std::cout << "point_bboxbody: " << point_bbox.transpose() << std::endl;
+      Eigen::Vector3d theroshold(0.40, 0.20, 0.40);
+      Eigen::Vector3d ground_height(0.0, 0.25, 0.0);
+      for (int i = 0; i < 3; i++)
+      {
+        if ((min_points[bbox_index][i] - theroshold[i]) < point_bbox[i] && (max_points[bbox_index][i] + theroshold[i] - ground_height[i]) > point_bbox[i]) insidebox_this = true;
+        else 
+        {
+          insidebox_this = false;
+          break;
+        }
+      }
+      if(insidebox_this)
+      {
+        insidebox = true;
+        break;
+      }
+      else continue;
+    }
+    if(pub) std::cout << "insidebox: " << insidebox << std::endl;
+    if(insidebox)
+    {
+      int tmp = 251;
+      out.write((char*)&tmp, sizeof(int));
+    }
+    else
+    {
+      int tmp = 9;
+      out.write((char*)&tmp, sizeof(int));
+    }
+  }
+  out.close();
+}
 }  // namespace kitti
 
 int main(int argc, char** argv) {
@@ -382,10 +513,11 @@ int main(int argc, char** argv) {
   const std::string dataset_path = argv[2];
   const std::string output_path = argv[3];
   const std::string sequence_num = argv[4];
+  const std::string label_out_path = argv[5];
   std::cout << ros::TIME_MIN.toSec() << std::endl;
   std::cout << ros::TIME_MIN.toNSec() << std::endl;
   kitti::KittiBagConverter converter(calibration_path, dataset_path,
-                                     output_path, sequence_num);
+                                     output_path, sequence_num, label_out_path);
   converter.convertAll();
 
   return 0;

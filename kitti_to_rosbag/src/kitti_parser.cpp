@@ -416,7 +416,7 @@ bool KittiParser::loadTimestampsIntoVector(
 }
 
 bool KittiParser::getGTboudingbox(std::vector<int> &frames, std::vector<int> &id, std::vector<Eigen::Vector3d> &min_points, std::vector<Eigen::Vector3d> &max_points, std::vector<Eigen::Matrix3d> &Rs) {
-  std::string filename = dataset_path_ + "/" + "label_02" + "/" + sequence_num_ + ".txt";
+  std::string filename = dataset_path_ + "/" + "label_dyn" + "/" + sequence_num_ + ".txt";
   std::ifstream import_file(filename, std::ios::in);
   if (!import_file) {
     std::cout << "cannot open label file" << std::endl;
@@ -555,7 +555,7 @@ bool KittiParser::getImageAtEntry(uint64_t entry, uint64_t cam_id,
                          "/" + sequence_num_ + "/" + getFilenameForEntry(entry) +
                          ".png";
 
-  *image = cv::imread(filename, CV_LOAD_IMAGE_UNCHANGED);
+  *image = cv::imread(filename, cv::IMREAD_UNCHANGED);
 
   if (!image->data) {
     std::cout << "Could not load image data.\n";
