@@ -51,6 +51,31 @@ cs_add_executable(pose_file_transfer
 )
 target_link_libraries(pose_file_transfer ${PROJECT_NAME} ${OpenCV_LIBRARIES})
 
+cs_add_executable(kittibbox_transfer
+  src/tracking_transfer_kittibbox.cpp
+)
+target_link_libraries(kittibbox_transfer ${PROJECT_NAME} ${OpenCV_LIBRARIES})
+
+cs_add_executable(kitti_tracking_statistics
+  src/kitti_tracking_statistics.cpp
+)
+target_link_libraries(kitti_tracking_statistics ${PROJECT_NAME} ${OpenCV_LIBRARIES})
+
+
+cs_add_executable(record_pose_vicon
+  src/record_pose_vicon.cpp
+)
+target_link_libraries(record_pose_vicon ${PROJECT_NAME} ${OpenCV_LIBRARIES})
+
+cs_add_executable(write_jpg
+  src/extract_img_from_bag.cpp
+)
+target_link_libraries(write_jpg ${PROJECT_NAME} ${OpenCV_LIBRARIES})
+
+cs_add_executable(write_static_bin
+  src/kitti_static_points_extract.cpp
+)
+target_link_libraries(write_static_bin ${PROJECT_NAME} ${OpenCV_LIBRARIES})
 
 ##########
 # EXPORT #

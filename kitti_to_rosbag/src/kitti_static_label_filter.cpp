@@ -21,14 +21,13 @@ struct object_s{
 
 int main(int argc, char** argv) {
     std::string root_dir = argv[1];
-    std::string cal_dir = argv[2];
-    std::string sequence_num = argv[3];
+    std::string sequence_num = argv[2];
     std::cout << root_dir << std::endl;
     std::cout << sequence_num << std::endl;
     std::string label_file = root_dir + "/label_02/" + sequence_num + ".txt";
     std::string gt_file = root_dir + "/pose_lio/" + sequence_num + ".txt";
     // std::string cal_file = "/media/yihang/LYH/kitti_tracking/data_tracking_calib/training/calib/" + sequence_num + ".txt";
-    std::string cal_file = cal_dir + sequence_num + ".txt";
+    std::string cal_file = root_dir + "/calib/" + sequence_num + ".txt";
     std::ifstream posefile(gt_file, std::ios::in);
     std::ifstream labelfile(label_file, std::ios::in);
     std::ifstream calfile(cal_file, std::ios::in);
@@ -164,7 +163,7 @@ int main(int argc, char** argv) {
     for(int i = 0; i < tracks.size(); i++)
     {
         bool track_static = false;
-        double thresold = 0.10;
+        double thresold = 0.1;
         if (tracks[i].size() <= 1) 
         {   
             track_static = true;
@@ -191,6 +190,7 @@ int main(int argc, char** argv) {
                     std::cout << "frame: " << j << std::endl;
                     std::cout << "location diff of track 3: " <<  (curr_loc - next_loc).norm() << std::endl;
                 }
+                // if ((curr_loc - next_loc).norm() < thresold || i==3 || i==10) // 00
                 // if ((curr_loc - next_loc).norm() < thresold || j <= 2 || i==5 || i==7 || i==43 || i==59 || i==62 || i==61 || i==3 || i==4 ||i==2||i==6||i==11 ||i==18||i==22|| i==16 ||i==19|| i==23 || i==26 ||i==28 ||i==32||i==30||i==34||i==33||i==35 ||i==44 ||i==45 ||i==51||i==54) //07
                 // if ((curr_loc - next_loc).norm() < thresold || j <= 2 ||i==7 ||i==15||i==16) // 08
                 // if ((curr_loc - next_loc).norm() < thresold || j <= 2 || (i<= 13&& i>=10) || i<=8 || (i<=30&&i>=27) || (i<=43&&i>=32) || i==56 ||i==58||i==16||i==26||i==18||(i<=50&&i>=44)||i==59 ||i==61||i==55||i==62 ||i==64||(i<=78&&i>=71) ||(i<=85&&i>=80)) //09
@@ -199,9 +199,10 @@ int main(int argc, char** argv) {
                 // if (tracks[i][j].track_class == "Person" || (curr_loc - next_loc).norm() < thresold || j <= 2 ||i==3||i==4||i==5||i==8||i==9||i==10||i==13) //14
                 // if (tracks[i][j].track_class == "Person" || (curr_loc - next_loc).norm() < thresold || j <= 2 ||i==1||i==16||i==17 ||i==2) //15
                 // if (tracks[i][j].track_class == "Person" || (curr_loc - next_loc).norm() < thresold || j <= 2 || i==65 ||i==57 ||i==12 ||i==42 ||i==67) //19
-                if (tracks[i][j].track_class == "Person" || (curr_loc - next_loc).norm() < thresold || j <= 2)
+                // if ((curr_loc - next_loc).norm() < thresold || i==1 || i == 3 || i==4 || (i >=10 && i<=13)) // 02
+                if ((curr_loc - next_loc).norm() < thresold)
                 { 
-                    // if(i==63) // 24 for bag 16
+                    // if(i==2) // 24 for bag 16
                     // {
                     //    track_static = false; 
                     // }
@@ -233,6 +234,7 @@ int main(int argc, char** argv) {
                 tracks[i][j].frame = -1;
             }
         }
+        
         // if(track_static)
         // {
         //     tracks[i].clear();

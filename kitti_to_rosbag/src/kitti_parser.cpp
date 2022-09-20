@@ -415,11 +415,11 @@ bool KittiParser::loadTimestampsIntoVector(
   return true;
 }
 
-bool KittiParser::getGTboudingbox(std::vector<int> &frames, std::vector<int> &id, std::vector<Eigen::Vector3d> &min_points, std::vector<Eigen::Vector3d> &max_points, std::vector<Eigen::Matrix3d> &Rs) {
-  std::string filename = dataset_path_ + "/" + "label_dyn" + "/" + sequence_num_ + ".txt";
+bool KittiParser::getGTboudingbox(const std::string label_folder, std::vector<int> &frames, std::vector<int> &id, std::vector<Eigen::Vector3d> &min_points, std::vector<Eigen::Vector3d> &max_points, std::vector<Eigen::Matrix3d> &Rs, std::vector<std::string> &types) {
+  std::string filename = dataset_path_ + "/" + label_folder + "/" + sequence_num_ + ".txt";
   std::ifstream import_file(filename, std::ios::in);
   if (!import_file) {
-    std::cout << "cannot open label file" << std::endl;
+    std::cout << "cannot open GTboundingbox file" << std::endl;
     return false;
   }
   std::string line;
@@ -439,6 +439,7 @@ bool KittiParser::getGTboudingbox(std::vector<int> &frames, std::vector<int> &id
     {
       frames.push_back(frame_i);
       id.push_back(index);
+      types.push_back(type);
       std::vector<double> parsed_doubles;
       if (parseVectorOfDoubles(data, &parsed_doubles)){
         Eigen::Matrix<double, 14, 1> V(parsed_doubles.data());

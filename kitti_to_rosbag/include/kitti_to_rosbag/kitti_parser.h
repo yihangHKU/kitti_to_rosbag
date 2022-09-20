@@ -78,7 +78,7 @@ class KittiParser {
                             pcl::PointCloud<pcl::PointXYZI>* ptcloud);
   bool getImageAtEntry(uint64_t entry, uint64_t cam_id, uint64_t* timestamp,
                        cv::Mat* image);
-  bool getGTboudingbox(std::vector<int> &frames, std::vector<int> &id, std::vector<Eigen::Vector3d> &min_point, std::vector<Eigen::Vector3d> &max_point, std::vector<Eigen::Matrix3d> &R);
+  bool getGTboudingbox(const std::string label_folder, std::vector<int> &frames, std::vector<int> &id, std::vector<Eigen::Vector3d> &min_point, std::vector<Eigen::Vector3d> &max_point, std::vector<Eigen::Matrix3d> &R, std::vector<std::string> &types);
 
   bool getCameraCalibration(uint64_t cam_id, CameraCalibration* cam) const;
 
@@ -95,6 +95,7 @@ class KittiParser {
   // Basic accessors.
   Transformation T_cam0_vel() const;
   Transformation T_vel_imu() const;
+  CameraCalibrationVector camera_calibrations_;
 
   size_t getNumCameras() const;
 
@@ -122,7 +123,6 @@ class KittiParser {
   bool rectified_;
 
   // Cached calibration parameters -- std::vector of camera calibrations.
-  CameraCalibrationVector camera_calibrations_;
 
   // Transformation chain (cam-to-cam extrinsics stored above in cam calib
   // struct).
