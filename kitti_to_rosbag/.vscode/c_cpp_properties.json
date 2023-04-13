@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/local/include",
+                "/usr/include/pcl-1.10",
+                "/usr/include/eigen3",
+                "/opt/ros/noetic/include",
+                "~/Livox_ros_driver/devel/include/livox_ros_driver",
+                "~/Livox_ros_driver/devel/include",
+                "~/catkin_ws//devel/include",
+                "/usr/include/pcl-1.10",
+                "~/catkin_ws/src/FAST_LIO/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}

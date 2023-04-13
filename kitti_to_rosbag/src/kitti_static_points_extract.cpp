@@ -491,12 +491,15 @@ void KittiBagConverter::writelabels(bool debug, std::string filename, pcl::Point
       bool insidebox_this = false;
       if(pub) std::cout << "min_point: " << min_points[bbox_index].transpose() << " max_point: " << max_points[bbox_index].transpose() << std::endl;
       if(pub) std::cout << "point_bboxbody: " << point_bbox.transpose() << std::endl;
-      Eigen::Vector3d theroshold(0.40, 0.20, 0.40);
-      Eigen::Vector3d ground_height(0.0, 0.30, 0.0);
+      // Eigen::Vector3d theroshold(0.40, 0.20, 0.40);
+      // Eigen::Vector3d ground_height(0.0, 0.30, 0.0);
+      Eigen::Vector3d theroshold;
+      Eigen::Vector3d ground_height(0.0, 0.0, 0.0);
       for (int i = 0; i < 3; i++)
       { 
-        if(types[bbox_index] == "Pedestrian" || types[bbox_index] == "Cyclist") theroshold << 0.20, 0.20, 0.20;
-        else theroshold << 0.40, 0.20, 0.40;
+        // if(types[bbox_index] == "Pedestrian" || types[bbox_index] == "Cyclist") theroshold << 0.20, 0.20, 0.20;
+        // else theroshold << 0.40, 0.20, 0.40;
+        theroshold(i) = 0.5 * (max_points[bbox_index][i] - min_points[bbox_index][i]);
         if ((min_points[bbox_index][i] - theroshold[i]) < point_bbox[i] && (max_points[bbox_index][i] + theroshold[i] - ground_height[i]) > point_bbox[i]) insidebox_this = true;
         else 
         {
